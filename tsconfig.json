@@ -1,0 +1,11 @@
+{
+    "compilerOptions": {
+      "target": "ES6",                  // JavaScript version to compile to
+      "module": "commonjs",             // Module code generation
+      "outDir": "./dist",               // Directory to output compiled files
+      "rootDir": "./src",               // Root directory of input files
+      "sourceMap": true                 // Generate source map files for debugging
+    },
+    "include": ["src/**/*.ts"],         // Include all TypeScript files in the src directory
+    "exclude": ["node_modules"]         // Exclude the node_modules directory
+  }
