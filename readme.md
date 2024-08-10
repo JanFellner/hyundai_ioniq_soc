@@ -52,13 +52,22 @@ Now press the bluetooth link button on the OBD dongle
 * Pair with the device and trust it
   ```
   pair XX:XX:XX:XX:XX:XX
+  ```
+  Follow the wizard and acknowledge as you are prompted to do so.
+  ```
   trust XX:XX:XX:XX:XX:XX
+  ```
+
+* Exit the bluetooth tool 
+  ```
+  exit
   ```
 
 * Create the serial port we will then use to communicate with the dongle
   ```
   sudo rfcomm bind hci0 XX:XX:XX:XX:XX:XX 1
   ```
+  
 * Reboot
   ```
   sudo reboot

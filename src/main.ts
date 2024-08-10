@@ -1,46 +1,71 @@
-import { SerialPort, ReadlineParser } from "serialport";
-import { EBluetoothStatus, Helpers } from "./helpers";
+import { theOBDConnection } from "./globals";
+import { OBDCommand } from "./OBDCommand";
 
-const obdLinkLX = "00:04:3E:85:0D:42";
-const serialPortPath = "/dev/rfcomm0";
+let timer: NodeJS.Timeout | undefined;
+let bReentrant = false;
+
+// Sending a 2105 we will receive a line with the following sample data:
+
+// 7EC2403E80203E80191 SOC 72%
+// 7EC2403E80203E80192 SOC 73%
+// 7EC2403E80203E80195 SOC 74%
+// 7EC2403E80203E80196 SOC 75%
+
+const initCommands: OBDCommand[] =
+[
+	new OBDCommand("ATZ"),
+	new OBDCommand("ATE0"),
+	new OBDCommand("ATL0"),
+	new OBDCommand("ATS0"),
+	new OBDCommand("STI"),
+	new OBDCommand("ATE0"),
+	new OBDCommand("STMFR"),
+	new OBDCommand("STUIL1"),
+	new OBDCommand("ATRV"),
+	new OBDCommand("ATH1"),
+	new OBDCommand("ATSP6")
+];
 
 /**
- * Validate the bluetooth connection through a timer call
+ * the global loop that keeps everything going
  */
-function checkConnected(): void {
-	const status = Helpers.isBluetoothDeviceConnected(obdLinkLX);
-	if (status === EBluetoothStatus.connected) {
-		// we are connected
-		const port = new SerialPort({
-			path: serialPortPath,
-			baudRate: 9600
-		});
+async function globalLoop(): Promise<void> {
+	if (bReentrant)
+		return;
 
-		const parser = port.pipe(new ReadlineParser({ delimiter: "\r\n" }));
+	bReentrant = true;
+	try {
+		let bContinue = theOBDConnection.isConnected();
+		if (!bContinue) {
+			const connectResult = await theOBDConnection.connect();
+			if (connectResult !== true)
+				console.error(connectResult);
+			else
+				bContinue = await theOBDConnection.handleCommand(initCommands);
+		}
+		if (bContinue) {
+			const getSOCCommmand = new OBDCommand("2105");
+			if (await theOBDConnection.handleCommand(getSOCCommmand))
+				console.log("jippie");
+		}
+	} catch (error: unknown) {
+		console.error(error);
+	}
+	bReentrant = false;
+}
 
-		// Open the serial port
-		port.on("open", () => {
-			console.log("Serial port opened.");
-
-			// Send data to the serial port
-			port.write("Hello from Node.js!\n", (err) => {
-				if (err) { console.log("Error writing to serial port:", err.message); return; }
-
-				console.log("Message written to serial port.");
-			});
-		});
-
-		// Read data from the serial port
-		parser.on("data", (data: string) => {
-			console.log("Data received:", data);
-		});
-
-		// Handle any errors
-		port.on("error", (err) => {
-			console.log("Error:", err.message);
-		});
+/**
+ * Activates or deactivates the timer that triggers everything
+ *
+ * @param bActive - to activate or deactivate the timer
+ */
+function configureTimer(bActive: boolean): void {
+	if (bActive && !timer)
+		timer = setInterval(() => { void globalLoop(); }, 1000);
+	else if (!bActive && timer) {
+		clearInterval(timer);
+		timer = undefined;
 	}
 }
 
-// Set the connection interval
-setInterval(() => { checkConnected(); }, 1000);
+configureTimer(true);
