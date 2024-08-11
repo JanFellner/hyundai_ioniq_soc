@@ -55,41 +55,64 @@ export class OBDConnection {
 
 		this.port = new SerialPort({
 			path: this.config.serialPort,
-			baudRate: 9600
+			baudRate: 9600,
+			autoOpen: false,
+			lock: false
 		});
 
-		return new Promise<true | string>((resolve) => {
+		this.parser = this.port.pipe(new ReadlineParser({ delimiter: ">" }));
+		this.parser.addListener("data", this.onDataClass.bind(this));
+
+		const prom = new Promise<true | string>((resolve) => {
 			if (!this.port) {
 				resolve("Port was not available inside promise!");
 				return;
 			}
+			type done = (result: true | string) => void;
+			const onError = (err: Error) => {
+				done(err.message);
+			};
+			const onClose = () => {
+				done("Port was closed unexpectedly");
+			};
+			const onOpen = () => {
+				done(true);
+			};
+
 			/**
 			 * Handles error, close and open and calls the resolve
 			 *
 			 * @param result - value for the resolve
 			 */
 			const done = (result: true | string) => {
-				if (this.port)
-					this.port.removeAllListeners();
+				if (this.port) {
+					this.port.removeListener("error", onError);
+					this.port.removeListener("close", onClose);
+					this.port.removeListener("open", onOpen);
+				}
 				if (result === true && this.port && this.parser) {
+					console.log("Port is open, attaching notifies");
 					// Hand over error, close and data handling to the class methods
-					this.port.on("error", this.onError.bind(this));
-					this.port.on("close", this.onClose.bind(this));
-					this.parser = this.port.pipe(new ReadlineParser({ delimiter: ">" }));
-					this.parser.on("data", this.onData.bind(this));
+					this.port.addListener("error", this.onError.bind(this));
+					this.port.addListener("close", this.onClose.bind(this));
+					this.port.addListener("data", (data: ArrayBuffer) => {
+						console.log("port inline: ", data);
+						console.log("port inline: ", data.toString());
+					});
+					this.parser.addListener("data", (data: unknown) => {
+						console.log("parser inline: ", data);
+					});
 				}
 				resolve(result);
 			};
-			this.port.on("error", (err: Error) => {
-				done(err.message);
-			});
-			this.port.on("close", () => {
-				done("Port was closed");
-			});
-			this.port.on("open", () => {
-				done(true);
-			});
+			this.port.addListener("error", onError);
+			this.port.addListener("close", onClose);
+			this.port.addListener("open", onOpen);
 		});
+
+		this.port.open();
+
+		return prom;
 	}
 
 	/**
@@ -138,7 +161,7 @@ export class OBDConnection {
 	 *
 	 * @param data - the data the parser has read from the serial port
 	 */
-	private onData(data: string): void {
+	private onDataClass(data: string): void {
 		console.log(`received in class: ${data}`);
 	}
 
