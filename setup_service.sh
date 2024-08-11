@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Variables
-SERVICE_NAME="myapp"
-DESCRIPTION="My Node.js App"
+SERVICE_NAME="ioniqsoc"
+DESCRIPTION="Hyundai Ioniq state of charge service"
 USER=$(whoami)
 WORKING_DIR=$(pwd)
 SERVICE_FILE="/etc/systemd/system/${SERVICE_NAME}.service"
@@ -28,8 +28,6 @@ Restart=always
 RestartSec=10
 User=$USER
 Environment=NODE_ENV=production
-ExecStartPre=/usr/bin/npm install
-ExecStartPre=/usr/bin/npm run build
 
 [Install]
 WantedBy=multi-user.target

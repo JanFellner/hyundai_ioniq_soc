@@ -1,4 +1,6 @@
-# Hyundai Ioniq SOC Webservice
+# Hyundai Ioniq state of charge (SOC) node webservice
+
+This tiny node service fetches the SOC of a Hyundai Ioniq with an OBD2 bluetooth dongle. The service preferably runs on a rasperry pi. It offers a webservice which allows to query the SOC through web calls. I use it to provide the SOC to openwb - https://github.com/openWB.
 
 ## Things you need to have on hand
 Things you need to have:
@@ -74,13 +76,47 @@ Now press the bluetooth link button on the OBD dongle
   ```
 
 ### Install the hyundai soc service
+Check out the repo, preferably in /usr/local/bin/
+
 ```
 git clone https://github.com/JanFellner/hyundai_ioniq_soc.git
 cd hyundai_ioniq_soc
-npm i
 ```
 
-- Touch the config with the address of the bluetooth dongle
-- Turn on the ignition or start charging (Otherwise the OBD device cannot read data from the bus)
-- start the service, check the console if the SOC is read from the car
- 
+- Touch the .env config as appropriate. <span style="color:red">You need to set the proper OBD dongle MAC address (as used before).<span style="color:red">
+
+```
+sudo nano .env
+```
+
+You can now manually start the service and check the status on the console. ***Ensure that the car is either charging or the ignition is switched on!*** Otherwise you won´t get any SOC.
+
+```
+npm run serve
+```
+
+This will checkout node libraries, compile the sources and run the service.
+The service provides three web url entry points that serve the SOC information.
+
+- http://rasperries_ip/soc_double
+  - Provides the SOC with decimals (95.5%)
+- http://rasperries_ip/soc_integer
+  - Provides the SOC as integer (95%)
+- http://rasperries_ip/distance
+  - Provides the theoretical distance, based on the SOC (210)
+
+Once everything looks good call the setup_service.sh to register it as service so that it automatically starts (and restarts ;)
+
+```
+chmod +x setup_service.sh
+sudo ./setup_service.sh
+```
+
+The soc service is not regsitered as ioniqsoc.
+You may query the status and log entries with
+
+```
+systemctl status ioniqsoc
+```
+
+
