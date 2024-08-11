@@ -18,7 +18,7 @@ export class BatteryState {
 	private fileName: string;
 
 	/**
-	 * Constructs the OBDConnection singleton
+	 * Constructs the Battery singleton
 	 * Method is private as we follow the Singleton Approach using getInstance
 	 *
 	 * @param config - the config
@@ -30,7 +30,7 @@ export class BatteryState {
 	}
 
 	/**
-	 * Gets instance of OBDConnection to use as singleton.
+	 * Gets instance of BatteryState to use as singleton.
 	 *
 	 * @param config - the config
 	 * @returns - an instance of this class.

@@ -1,3 +1,5 @@
+import { theLogger } from "./globals";
+
 // The resolve function
 type resolveFunction = (value: true | string) => void;
 
@@ -43,7 +45,7 @@ export class OBDCommand {
 	public setResponse(response: string): void {
 		this.response = response.trim();
 		if (this.bShowSendReply & EShowSendAndResponse.response)
-			console.log("Response:", this.response);
+			theLogger.log(`Response: ${this.response}`);
 		if (this.resolve)
 			this.resolve(true);
 	}
@@ -56,7 +58,7 @@ export class OBDCommand {
 	public getCommand(): string {
 		const command = `${this.command}\r`;
 		if (this.bShowSendReply & EShowSendAndResponse.send)
-			console.log("Sending:", command);
+			theLogger.log(`Sending: ${command}`);
 		return command;
 	}
 

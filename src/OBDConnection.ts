@@ -3,6 +3,7 @@ import { ReadlineParser, SerialPort } from "serialport";
 import { IConfig } from "./config";
 import { OBDCommand, OBDCommands } from "./OBDCommand";
 import { IOBDConnectionCallback } from "./IOBDConnectionCallback";
+import { theLogger } from "./globals";
 
 /**
  * Handles the connection to the car.
@@ -62,7 +63,8 @@ export class OBDConnection {
 			this.port = new SerialPort({
 				path: this.config.serialPort,
 				baudRate: 9600,
-				autoOpen: false
+				autoOpen: false,
+				lock: false
 			});
 
 			// Attach the data parser to the port
@@ -91,7 +93,7 @@ export class OBDConnection {
 				this.port.addListener("close", this.onClose.bind(this));
 			} else {
 				// An error has occured
-				console.error("Error opening port: ", result);
+				theLogger.error(`Error opening port: ${result}`);
 				this.port = undefined;
 				this.parser = undefined;
 			}
@@ -99,7 +101,7 @@ export class OBDConnection {
 			return result;
 		} catch (error: unknown) {
 			const msg = (error as Error).message;
-			console.error("Unknown exception while opening port: ", msg);
+			theLogger.error(`Unknown exception while opening port: ${msg}`);
 			return msg;
 		}
 	}
@@ -154,14 +156,14 @@ export class OBDConnection {
 		if (this.currentCommand)
 			this.currentCommand.setResponse(data);
 		else
-			console.warn(`Received data without processing a command: ${data}`);
+			theLogger.warn(`Received data without processing a command: ${data}`);
 	}
 
 	/**
 	 * Called when the serial port gets closed
 	 */
 	private onClose(): void {
-		console.error(`Port was closed`);
+		theLogger.error(`Port was closed`);
 		if (this.port) {
 			this.port.removeAllListeners();
 			this.port = undefined;
@@ -179,7 +181,7 @@ export class OBDConnection {
 	 * @param err - the error as provided from the serial port
 	 */
 	private onError(err: Error): void {
-		console.error(`Port received an error ${err}`);
+		theLogger.error(`Port received an error ${err}`);
 		if (this.port) {
 			this.port.close();
 			this.port.removeAllListeners();
@@ -209,7 +211,7 @@ export class OBDConnection {
 		for (const com of command) {
 			// If we have no port or parser we can quit here
 			if (!this.port || !this.parser) {
-				console.log("Have no port or parser in handleCommand inside the loop");
+				theLogger.log("Have no port or parser in handleCommand inside the loop");
 				bSuccess = false;
 				break;
 			}
@@ -220,7 +222,7 @@ export class OBDConnection {
 
 			const prom = new Promise<true | string>((resolve) => {
 				if (!this.port || !this.parser) {
-					console.log("Have no port or parser in handleCommand inside the promise");
+					theLogger.log("Have no port or parser in handleCommand inside the promise");
 					return;
 				}
 
@@ -267,10 +269,10 @@ export class OBDConnection {
 		const command = `sudo l2ping -c 1 -s 1 -f ${deviceMacAddress}`;
 		try {
 			execSync(command, options);
-			console.log(`${command} succeeded`);
+			theLogger.log(`${command} succeeded`);
 			return true;
 		} catch (error: unknown) {
-			console.error(`${command} failed`);
+			theLogger.error(`${command} failed`);
 			return JSON.stringify(error);
 		}
 	}

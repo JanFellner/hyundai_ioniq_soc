@@ -1,4 +1,5 @@
 import * as os from "os";
+import { theLogger } from "./globals";
 
 /**
  * Helper functions mapped into a Helpers class
@@ -19,7 +20,7 @@ export class Helpers {
 				for (const networkInterface of interfaces) {
 					// Check for IPv4 and that it's not an internal (i.e., localhost) address
 					if (networkInterface.family === "IPv4" && !networkInterface.internal) {
-						console.log(`IP Address: ${networkInterface.address}`);
+						theLogger.log(`IP Address: ${networkInterface.address}`);
 						return networkInterface.address;
 					}
 				}

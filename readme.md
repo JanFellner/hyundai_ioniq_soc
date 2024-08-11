@@ -2,6 +2,9 @@
 
 This tiny node service fetches the SOC of a Hyundai Ioniq with an OBD2 bluetooth dongle. The service preferably runs on a rasperry pi. It offers a webservice which allows to query the SOC through web calls. I use it to provide the SOC to openwb - https://github.com/openWB.
 
+The service tries to fetch the SOC periodicly. The SOC is only readable if the car is charing or the ignition is switched on. As soon as the SOC has been fetched the value is stored (also as file).
+Thus the service is always able to provide a SOC even if it might be outdated. As you ask the webservice urls the SOC is instantly fetched from the car (if possible).
+
 ## Things you need to have on hand
 Things you need to have:
 - Raspberry PI with bluetooth support
