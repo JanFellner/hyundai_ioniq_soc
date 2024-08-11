@@ -107,6 +107,8 @@ The service provides three web url entry points that serve the SOC information.
   - Provides the SOC as integer (95%)
 - http://rasperries_ip/distance
   - Provides the theoretical distance, based on the SOC (210)
+- http://rasperries_ip/status
+  - Provides a simple status page with the last log messages
 
 Once everything looks good call the setup_service.sh to register it as service so that it automatically starts (and restarts ;)
 
