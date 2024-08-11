@@ -16,6 +16,12 @@ interface IEconfConfig extends StaticConfig {
 	obd2MAC: string;
 	// The serial port device name
 	serialPort: string;
+	// Path where we store the last SOC we gathered
+	socFileName: string;
+	// The port under which we server the SOC website
+	port: number;
+	// Defines the distance for 100% battery capactiy
+	distance100?: number;
 }
 
 export type IConfig = IEconfConfig & ICoreConfig
@@ -72,7 +78,10 @@ export class Config extends EConfigTemplate {
 		const config: IEconfConfig = {
 			...new StaticConfig(),
 			obd2MAC: this.newProperty<string>("deviceMAC", validators.validateStringNotEmpty()),
-			serialPort: this.newProperty<string>("serialPort", validators.validateString(), "/dev/rfcomm0")
+			serialPort: this.newProperty<string>("serialPort", validators.validateString(), "/dev/rfcomm0"),
+			socFileName: this.newProperty<string>("socFileName", validators.validateString(), "soc.json"),
+			port: this.newProperty<number>("port", validators.validatePort(), 3000),
+			distance100: this.newProperty<number | undefined>("distance100", validators.validateInteger(), undefined)
 		};
 		return config;
 	}

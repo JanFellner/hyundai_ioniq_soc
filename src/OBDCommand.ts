@@ -1,3 +1,14 @@
+// The resolve function
+type resolveFunction = (value: true | string) => void;
+
+// Flags to parameterize whether to log send commands and or responses to the console
+export enum EShowSendAndResponse {
+	nothing = 0,
+	send = 1,
+	response = 2,
+	send_and_response = 3
+}
+
 /**
  * An command with the expected response and delay
  */
@@ -6,10 +17,12 @@ export class OBDCommand {
 	 * Creates an OBDCommand
 	 *
 	 * @param command - the command to send
+	 * @param bShowSendReply - flag whether we want to see sending and reply on the console or not
 	 * @param delay - the delay we are waiting for a repsonse
 	 */
-	public constructor(command: string, delay: number = 1000) {
+	public constructor(command: string, bShowSendReply = EShowSendAndResponse.nothing, delay: number = 1000) {
 		this.command = command;
+		this.bShowSendReply = bShowSendReply;
 		this.delay = delay;
 	}
 
@@ -18,45 +31,64 @@ export class OBDCommand {
 	 *
 	 * @returns true on success
 	 */
-	public hasResponse(): boolean {
+	public hasResponse(): this is this & { response: string } {
 		return this.response?.length ? true : false;
 	}
 
 	/**
-	 * Processes the command to the OBD dongle
+	 * Puts the response into the object, logs it to the console if requested
 	 *
-	 * @returns true on success or false on error
+	 * @param response - the response to set
 	 */
-	public async process(): Promise<boolean> {
-		return new Promise<boolean>((resolve, reject) => {
-			let timeout: NodeJS.Timeout | undefined;
-			/**
-			 * Handles the data we receive
-			 *
-			 * @param data - the data as provided by the stream parser
-			 */
-			/*
-			const onData = (data: string) => {
-				clearTimeout(timeout);
-				this.response = data;
-				console.log(`Received: ${data}`);
-				parser.removeListener("data", onData);
-				resolve(true);
-			};
-			parser.addListener("data", onData);
-			console.log(`Sending: ${this.command}`);
-			port.write(`${this.command}\r`);
-			timeout = setTimeout(() => {
-				parser.removeListener("data", onData);
-				resolve(false);
-			}, this.delay);
-			*/
-		});
+	public setResponse(response: string): void {
+		this.response = response.trim();
+		if (this.bShowSendReply & EShowSendAndResponse.response)
+			console.log("Response:", this.response);
+		if (this.resolve)
+			this.resolve(true);
 	}
 
+	/**
+	 * Retrieves the command and logs it to the console if requested
+	 *
+	 * @returns the command
+	 */
+	public getCommand(): string {
+		const command = `${this.command}\r`;
+		if (this.bShowSendReply & EShowSendAndResponse.send)
+			console.log("Sending:", command);
+		return command;
+	}
+
+	/**
+	 * Resolves the promise (data was received or an error occured)
+	 *
+	 * @param value - the value to resolve the promise, true on success or an error string
+	 */
+	public resolve(value: true | string): void {
+		if (this.resolver)
+			this.resolver(value);
+	}
+
+	/**
+	 * Sets the promise resolver function
+	 *
+	 * @param resolver - the resolver function to complete the promise
+	 */
+	public setResolver(resolver: resolveFunction): void {
+		this.resolver = resolver;
+	}
+
+	// The bare command without terminating newline
 	public command: string;
+	// The response (if available)
 	public response?: string;
+	// Flag whether we want to see sending and reply on the console or not
+	public bShowSendReply: EShowSendAndResponse;
+	// The maximum delay we want to wait for an answer
 	public delay: number;
+	// The completed promise which will get triggered by callbacks in teh ODBConnection class onData, onClose, onError callbacks
+	private resolver?: resolveFunction;
 }
 
 export type OBDCommands = Array<OBDCommand>;

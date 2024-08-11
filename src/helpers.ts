@@ -1,21 +1,30 @@
+import * as os from "os";
+
 /**
  * Helper functions mapped into a Helpers class
  */
 export class Helpers {
 	/**
-	 * Function to convert ArrayBuffer to a string assuming ASCII encoding
+	 * Retrieve a local ipv4 address
 	 *
-	 * @param buffer - Data to convert
-	 * @returns the converted string
+	 * @returns an IPV4 if available
 	 */
-	public static arrayBufferToAsciiString(buffer: ArrayBuffer): string {
-		// Create a Uint8Array view over the buffer
-		const uint8Array = new Uint8Array(buffer);
+	public static getLocalIPAddress(): string | undefined {
+		const networkInterfaces = os.networkInterfaces();
 
-		// Use TextDecoder to decode the byte array into a string with ASCII encoding
-		const decoder = new TextDecoder("ascii");
-		const text = decoder.decode(uint8Array);
+		for (const interfaceName in networkInterfaces) {
+			const interfaces = networkInterfaces[interfaceName];
 
-		return text;
+			if (interfaces) {
+				for (const networkInterface of interfaces) {
+					// Check for IPv4 and that it's not an internal (i.e., localhost) address
+					if (networkInterface.family === "IPv4" && !networkInterface.internal) {
+						console.log(`IP Address: ${networkInterface.address}`);
+						return networkInterface.address;
+					}
+				}
+			}
+		}
+		return undefined;
 	}
 }

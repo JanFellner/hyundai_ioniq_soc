@@ -103,7 +103,7 @@ module.exports = {
 		"@typescript-eslint/no-confusing-void-expression": "error",
 		"@typescript-eslint/no-for-in-array": "error",
 		"@typescript-eslint/no-unnecessary-type-arguments": "error",
-		"@typescript-eslint/no-unsafe-assignment": "error",
+		"@typescript-eslint/no-unsafe-assignment": "off",
 		"@typescript-eslint/no-unsafe-member-access": "error",
 		"@typescript-eslint/no-unsafe-return": "error",
 		"@typescript-eslint/explicit-member-accessibility": "error",

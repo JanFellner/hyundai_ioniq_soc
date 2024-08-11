@@ -1,116 +1,138 @@
-import { theOBDConnection } from "./globals";
+import { theBatteryState, theConfig, theOBDConnection } from "./globals";
+import { Helpers } from "./helpers";
+import { initCommands } from "./initCommands";
 import { OBDCommand } from "./OBDCommand";
+import express, { Application, Request, Response } from "express";
+export const theWebServer: Application = express();
 
-let timer: NodeJS.Timeout | undefined;
-let bReentrant = false;
+let lastQuery = 0;
 
-// Sending a 2105 we will receive a line with the following sample data:
+/**
+ * EValuates if the last SOC value is more than 5 minutes old
+ *
+ * @returns true if this is the case
+ */
+function needsRequery(): boolean {
+	const now = Date.now();
+	const maxNoQuery = lastQuery + 60000 * 5;
+	if (now > maxNoQuery)
+		return true;
+	else
+		return false;
+}
 
-// 7EC2403E80203E80191 SOC 72%
-// 7EC2403E80203E80192 SOC 73%
-// 7EC2403E80203E80195 SOC 74%
-// 7EC2403E80203E80196 SOC 75%
+/**
+ * Featches the SOC from the car
+ *
+ * @returns true if we were able to read the SOC, or false if not
+ */
+async function readSOC(): Promise<boolean> {
+	let bSOCFound = false;
+	lastQuery = Date.now();
 
-const initCommands: OBDCommand[] =
-[
-	// Reset settings to defaults
-	new OBDCommand("ATD"),
+	// If we are connected, let´s fetch the element that allows us to read the SOC
+	const getSOCCommmand = new OBDCommand("2105");
+	console.log("Querying SOC");
+	if (await theOBDConnection.handleCommand(getSOCCommmand) && getSOCCommmand.hasResponse()) {
+		// Sending a 2105 we will receive a line with the following sample data:
+		// 7EC 24 03 E8 02 03 E8 01 91 SOC 72%
+		// 7EC 24 03 E8 02 03 E8 01 92 SOC 73%
+		// 7EC 24 03 E8 02 03 E8 01 95 SOC 74%
+		// 7EC 24 03 E8 02 03 E8 01 96 SOC 75%
 
-	// Reboot the device
-	new OBDCommand("ATZ"),
+		// If the car is sleeping (no ignition, not charging), we receive a pretty empty list here
+		const response = getSOCCommmand.response;
+		const elements = response.split("\r");
+		for (let element of elements) {
+			element = element.trim();
+			if (element.substring(0, 6) === "7EC 24") {
+				const socHex = element.substring(element.length - 2, element.length);
+				const newSoc = parseInt(socHex, 16) / 2;
+				theBatteryState.setSoc(newSoc);
+				console.log(`Current SOC: ${newSoc}%`);
+				bSOCFound = true;
+			}
+		}
+		if (!bSOCFound)
+			console.log("SOC currently not available");
+	}
+	return bSOCFound;
+}
 
-	// Show programmable parameters (OBDLink only)
-	// 00:FF F  01:FF F  02:FF F  03:19 F
-	// 04:01 F  05:FF F  06:F1 F  07:09 F
-	// 08:FF F  09:00 F  0A:0A F  0B:FF F
-	// 0C:23 F  0D:0D F  0E:5A F  0F:FF F
-	// 10:0D F  11:00 F  12:00 F  13:F4 F
-	// 14:FF F  15:0A F  16:FF F  17:92 F
-	// 18:00 F  19:28 F  1A:0A F  1B:0A F
-	// 1C:FF F  1D:FF F  1E:FF F  1F:FF F
-	// 20:FF F  21:FF F  22:FF F  23:FF F
-	// 24:00 F  25:00 F  26:00 F  27:FF F
-	// 28:FF F  29:FF F  2A:04 F  2B:02 F
-	// 2C:E0 F  2D:04 F  2E:80 F  2F:0A F
-	new OBDCommand("ATTPS"),
-
-	// No echo
-	// OK
-	new OBDCommand("ATE0"),
-
-	// no CRLF 0x0D 0xA just CR 0x0D
-	// OK
-	new OBDCommand("ATL0"),
-
-	// Print spaces (we skip them in software, but for diagnostic it´s easier when reading plain transport messages)
-	// OK
-	new OBDCommand("ATS1"),
-
-	// Print OBD Link version information (differs from the ATI information as the ATI just says i am ELM327 device)
-	// STN1155 v5.6.19
-	new OBDCommand("STI"),
-
-	// Prints the manufcaturer:
-	// OBD Solutions LLC
-	new OBDCommand("STMFR"),
-
-	// Enable OBDLink LEDs
-	// OK
-	new OBDCommand("STUIL1"),
-
-	// Display voltage
-	// 12.6V
-	new OBDCommand("ATRV"),
-
-	// Provide header information in reponses
-	// OK
-	new OBDCommand("ATH1"),
-
-	// Set protocol to ISO 15765-4 (11bit ID, 500kbit)
-	// OK
-	new OBDCommand("ATSP6")
-];
+/**
+ * Queries the SOC value from the car
+ * Sets up the communication layer if needed and then tries to read the value from the car
+ *
+ * @returns true on success
+ */
+async function querySOC(): Promise<boolean> {
+	// Are we already connected?
+	let bContinue = theOBDConnection.isConnected();
+	if (!bContinue) {
+		// If not check if we can connect
+		const connectResult = await theOBDConnection.connect();
+		if (connectResult === true) {
+			console.log("Connected, initializing OBD dongle");
+			// Initialize the OBD dongel with the init commands
+			bContinue = await theOBDConnection.handleCommand(initCommands);
+			if (bContinue)
+				console.log("OBD dongle initialized...");
+		} else
+			console.error(connectResult);
+	}
+	if (bContinue)
+		return await readSOC();
+	return false;
+}
 
 /**
  * the global loop that keeps everything going
  */
 async function globalLoop(): Promise<void> {
-	if (bReentrant)
-		return;
-
-	bReentrant = true;
+	let nextRun = 5000;
 	try {
-		let bContinue = theOBDConnection.isConnected();
-		if (!bContinue) {
-			const connectResult = await theOBDConnection.connect();
-			if (connectResult !== true)
-				console.error(connectResult);
-			else
-				bContinue = await theOBDConnection.handleCommand(initCommands);
-		}
-		if (bContinue) {
-			const getSOCCommmand = new OBDCommand("2105");
-			if (await theOBDConnection.handleCommand(getSOCCommmand))
-				console.log("jippie");
-		}
+		if (await querySOC())
+			nextRun = 60000;
+		else
+			nextRun = 600000;
 	} catch (error: unknown) {
+		// After an unhandled error we wait for 30 seconds
 		console.error(error);
+		nextRun = 30000;
 	}
-	bReentrant = false;
+	console.log(`Next run in ${nextRun / 1000}seconds...`);
+	setTimeout(() => { void globalLoop(); }, nextRun);
 }
 
-/**
- * Activates or deactivates the timer that triggers everything
- *
- * @param bActive - to activate or deactivate the timer
- */
-function configureTimer(bActive: boolean): void {
-	if (bActive && !timer)
-		timer = setInterval(() => { void globalLoop(); }, 1000);
-	else if (!bActive && timer) {
-		clearInterval(timer);
-		timer = undefined;
-	}
-}
+theWebServer.get("/soc_double", async (req: Request, res: Response) => {
+	if (needsRequery())
+		await querySOC();
+	const soc = theBatteryState.soc || 0;
+	res.send(`${soc}`);
+});
 
-configureTimer(true);
+theWebServer.get("/soc_integer", async (req, res) => {
+	if (needsRequery())
+		await querySOC();
+	const soc = Math.floor(theBatteryState.soc || 0);
+	res.send(`${soc}`);
+});
+
+theWebServer.get("/distance", async (req, res) => {
+	if (!theConfig.distance100) {
+		res.status(500).send("Please provide distance100 in the .env file within the config to ensure the service is able to calculate the distance for the current SOC.");
+		return;
+	}
+	if (needsRequery())
+		await querySOC();
+	const soc = Math.floor(theBatteryState.soc || 0);
+	const distance = Math.floor(theConfig.distance100 * soc / 100);
+	res.send(`${distance}`);
+});
+
+theWebServer.listen(theConfig.port, () => {
+	const ip = Helpers.getLocalIPAddress() || "*";
+	console.log(`Server is running at http://${ip}:${theConfig.port}`);
+});
+
+void globalLoop();

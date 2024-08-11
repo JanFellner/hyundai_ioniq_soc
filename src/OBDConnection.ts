@@ -20,6 +20,9 @@ export class OBDConnection {
 	private config: IConfig;
 	// Callbacks that are called on specific events
 	private callbacks = new Set<IOBDConnectionCallback>();
+	// The currently handled command
+	// The onData, onError, onClose commands will target this command
+	private currentCommand?: OBDCommand;
 
 	/**
 	 * Constructs the OBDConnection singleton
@@ -49,70 +52,56 @@ export class OBDConnection {
 	 * @returns true on success or an error description in case of an error
 	 */
 	public async connect(): Promise<true | string> {
-		const reachable = this.isBluetoothDeviceReachable(this.config.obd2MAC);
-		if (reachable !== true)
-			return reachable;
+		try {
+			// Ensure the bluetooth obd2 token is reachable
+			const reachable = this.isBluetoothDeviceReachable(this.config.obd2MAC);
+			if (reachable !== true)
+				return reachable;
 
-		this.port = new SerialPort({
-			path: this.config.serialPort,
-			baudRate: 9600,
-			autoOpen: false,
-			lock: false
-		});
+			// Construct and configure the serial port
+			this.port = new SerialPort({
+				path: this.config.serialPort,
+				baudRate: 9600,
+				autoOpen: false
+			});
 
-		this.parser = this.port.pipe(new ReadlineParser({ delimiter: ">" }));
-		this.parser.addListener("data", this.onDataClass.bind(this));
+			// Attach the data parser to the port
+			this.parser = this.port.pipe(new ReadlineParser({ delimiter: ">" }));
+			this.parser.addListener("data", this.onData.bind(this));
 
-		const prom = new Promise<true | string>((resolve) => {
-			if (!this.port) {
-				resolve("Port was not available inside promise!");
-				return;
+			// Implement the asynchronity for the callback open
+			const prom = new Promise<true | string>((resolve) => {
+				if (!this.port) {
+					resolve("Port was undefined");
+					return;
+				}
+				this.port.open((err: Error | null) => {
+					if (err)
+						resolve(err.message);
+					else
+						resolve(true);
+				});
+			});
+
+			// Let´s open the port and wait for it
+			const result = await prom;
+			if (result === true) {
+				// Port is open, let´s attach the notifies
+				this.port.addListener("error", this.onError.bind(this));
+				this.port.addListener("close", this.onClose.bind(this));
+			} else {
+				// An error has occured
+				console.error("Error opening port: ", result);
+				this.port = undefined;
+				this.parser = undefined;
 			}
-			type done = (result: true | string) => void;
-			const onError = (err: Error) => {
-				done(err.message);
-			};
-			const onClose = () => {
-				done("Port was closed unexpectedly");
-			};
-			const onOpen = () => {
-				done(true);
-			};
 
-			/**
-			 * Handles error, close and open and calls the resolve
-			 *
-			 * @param result - value for the resolve
-			 */
-			const done = (result: true | string) => {
-				if (this.port) {
-					this.port.removeListener("error", onError);
-					this.port.removeListener("close", onClose);
-					this.port.removeListener("open", onOpen);
-				}
-				if (result === true && this.port && this.parser) {
-					console.log("Port is open, attaching notifies");
-					// Hand over error, close and data handling to the class methods
-					this.port.addListener("error", this.onError.bind(this));
-					this.port.addListener("close", this.onClose.bind(this));
-					this.port.addListener("data", (data: ArrayBuffer) => {
-						console.log("port inline: ", data);
-						console.log("port inline: ", data.toString());
-					});
-					this.parser.addListener("data", (data: unknown) => {
-						console.log("parser inline: ", data);
-					});
-				}
-				resolve(result);
-			};
-			this.port.addListener("error", onError);
-			this.port.addListener("close", onClose);
-			this.port.addListener("open", onOpen);
-		});
-
-		this.port.open();
-
-		return prom;
+			return result;
+		} catch (error: unknown) {
+			const msg = (error as Error).message;
+			console.error("Unknown exception while opening port: ", msg);
+			return msg;
+		}
 	}
 
 	/**
@@ -161,8 +150,11 @@ export class OBDConnection {
 	 *
 	 * @param data - the data the parser has read from the serial port
 	 */
-	private onDataClass(data: string): void {
-		console.log(`received in class: ${data}`);
+	private onData(data: string): void {
+		if (this.currentCommand)
+			this.currentCommand.setResponse(data);
+		else
+			console.warn(`Received data without processing a command: ${data}`);
 	}
 
 	/**
@@ -175,6 +167,8 @@ export class OBDConnection {
 			this.port = undefined;
 		}
 		this.parser = undefined;
+		if (this.currentCommand)
+			this.currentCommand.resolve(`Port was closed`);
 		for (const callback of this.callbacks)
 			callback.onConnectionClosed();
 	}
@@ -192,6 +186,8 @@ export class OBDConnection {
 			this.port = undefined;
 		}
 		this.parser = undefined;
+		if (this.currentCommand)
+			this.currentCommand.resolve(`Port received an error ${err}`);
 		for (const callback of this.callbacks)
 			callback.onConnectionError(err);
 	}
@@ -203,50 +199,60 @@ export class OBDConnection {
 	 * @returns true in case all commands have been procesed successfully
 	 */
 	public async handleCommand(command: OBDCommand | OBDCommands): Promise<boolean> {
+		let bSuccess = true;
+
+		// Make an array if we have none (makes handling later easier)
 		if (!Array.isArray(command))
 			command = [command];
-		for (const com of command) {
-			if (!this.port || !this.parser)
-				return false;
 
-			const prom = new Promise<boolean>((resolve) => {
+		// Process through the differnet commands
+		for (const com of command) {
+			// If we have no port or parser we can quit here
+			if (!this.port || !this.parser) {
+				console.log("Have no port or parser in handleCommand inside the loop");
+				bSuccess = false;
+				break;
+			}
+
+			// Set the current command so that the callbacks can properly fill data into it
+			this.currentCommand = com;
+			let timeout: NodeJS.Timeout | undefined;
+
+			const prom = new Promise<true | string>((resolve) => {
 				if (!this.port || !this.parser) {
-					resolve(false);
+					console.log("Have no port or parser in handleCommand inside the promise");
 					return;
 				}
-				type done = (result: boolean) => void;
-				const onError = () => {
-					done(false);
-				};
-				const onClose = () => {
-					done(false);
-				};
-				const onData = (data: string) => {
-					console.log(`received: ${data}`);
-					com.response = data;
-					done(true);
-				};
-				const done = (result: boolean) => {
-					if (this.port) {
-						this.port.removeListener("error", onError);
-						this.port.removeListener("close", onClose);
-					}
-					if (this.parser)
-						this.parser.removeListener("data", onData);
-					resolve(result);
-				};
-				this.port.addListener("error", onError);
-				this.port.addListener("close", onClose);
-				this.parser.on("data", onData);
-				console.log(`Sending: ${com.command}`);
-				this.port.write(`${com.command}\n`);
+
+				// Send the data
+				this.port.write(com.getCommand());
+
+				// Create a timeout callback that resolves to timeout
+				timeout = setTimeout(() => {
+					timeout = undefined;
+					resolve("Timed out");
+				}, com.delay);
+
+				// Attach the resolve to the command
+				// The resolve is called in the class for the differente events (onData, onClose, onError)
+				com.resolve = resolve;
 			});
 
-			if (!await prom)
-				return false;
+			const result = await prom;
+
+			// Clear the timeout if it still exists
+			if (timeout) {
+				clearTimeout(timeout);
+				timeout = undefined;
+			}
+			// If an error occured a string is returned, in that case we can instantly termiante here
+			if (result !== true) {
+				bSuccess = false;
+				break;
+			}
 		}
 
-		return false;
+		return bSuccess;
 	}
 
 	/**
