@@ -101,16 +101,16 @@ npm run serve
 This will checkout node libraries, compile the sources and run the service.
 The service provides three web url entry points that serve the SOC information.
 
+- http://rasperries_ip/
+  - Provides a simple status page with links to the following pages, logs, some interaction possibilities
 - http://rasperries_ip/soc_double
   - Provides the SOC with decimals (95.5%)
 - http://rasperries_ip/soc_integer
   - Provides the SOC as integer (95%)
 - http://rasperries_ip/distance
   - Provides the theoretical distance, based on the SOC (210)
-- http://rasperries_ip/status
-  - Provides a simple status page with the last log messages
 
-Once everything looks good call the setup_service.sh to register it as service so that it automatically starts (and restarts ;)
+Once everything looks good you can call the setup_service.sh to register it as service so that it automatically starts (and restarts 😉)
 
 ```
 chmod +x setup_service.sh
@@ -124,4 +124,4 @@ You may query the status and log entries with
 systemctl status ioniqsoc
 ```
 
-
+Happy charging 😁🔌⚡️🚗
