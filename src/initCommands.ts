@@ -1,4 +1,4 @@
-import { OBDCommand, OBDCommands } from "./OBDCommand";
+import { EShowSendAndResponse, OBDCommand, OBDCommands } from "./OBDCommand";
 
 export const initCommands: OBDCommands =
 [
@@ -6,7 +6,7 @@ export const initCommands: OBDCommands =
 	new OBDCommand("ATD"),
 
 	// Reboot the device
-	new OBDCommand("ATZ"),
+	new OBDCommand("ATZ", undefined, 2000),
 
 	// Show programmable parameters (OBDLink only)
 	// 00:FF F  01:FF F  02:FF F  03:19 F
@@ -35,13 +35,13 @@ export const initCommands: OBDCommands =
 	// OK
 	new OBDCommand("ATS1"),
 
-	// Print OBD Link version information (differs from the ATI information as the ATI just says i am ELM327 device)
-	// STN1155 v5.6.19
-	new OBDCommand("STI"),
-
 	// Prints the manufcaturer:
 	// OBD Solutions LLC
-	new OBDCommand("STMFR"),
+	new OBDCommand("STMFR", EShowSendAndResponse.response),
+
+	// Print OBD Link version information (differs from the ATI information as the ATI just says i am ELM327 device)
+	// STN1155 v5.6.19
+	new OBDCommand("STI", EShowSendAndResponse.response),
 
 	// Provide header information in reponses
 	// OK

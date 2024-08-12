@@ -7,8 +7,6 @@ dotenv.config();
  * The static config this package
  */
 class StaticConfig {
-	// The default timeout if we wait for data from the obd bus
-	public readonly odb2_timeout = 100;
 }
 
 interface IEconfConfig extends StaticConfig {
@@ -22,6 +20,12 @@ interface IEconfConfig extends StaticConfig {
 	port: number;
 	// Defines the distance for 100% battery capactiy
 	distance100?: number;
+	// true to log the whole transport data
+	logTransport: boolean;
+	// The default timeout if we wait for data from the obd bus
+	obd_defaultTimeout: number;
+	// The amount of logentries the logger caches
+	logLength: number;
 }
 
 export type IConfig = IEconfConfig & ICoreConfig
@@ -81,7 +85,10 @@ export class Config extends EConfigTemplate {
 			serialPort: this.newProperty<string>("serialPort", validators.validateString(), "/dev/rfcomm0"),
 			socFileName: this.newProperty<string>("socFileName", validators.validateString(), "soc.json"),
 			port: this.newProperty<number>("port", validators.validatePort(), 3000),
-			distance100: this.newProperty<number | undefined>("distance100", validators.validateInteger(), undefined)
+			distance100: this.newProperty<number | undefined>("distance100", validators.validateInteger(), undefined),
+			logTransport: this.newProperty<boolean>("logTransport", validators.validateBoolean(), 0),
+			obd_defaultTimeout: this.newProperty<number>("OBD_defaultTimeout", validators.validateInteger(), 250),
+			logLength: this.newProperty<number>("logLength", validators.validateInteger(), 50)
 		};
 		return config;
 	}

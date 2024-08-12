@@ -76,8 +76,7 @@ export class Logger {
 	 */
 	public log(message: string): void {
 		this.logEntries.push(new LogEntry(ELogEntry.debug, message));
-		while (this.logEntries.length > 25)
-			this.logEntries.shift();
+		this.handleLogLength();
 	}
 
 	/**
@@ -88,8 +87,7 @@ export class Logger {
 	 */
 	public warn(message: string): void {
 		this.logEntries.push(new LogEntry(ELogEntry.warn, message));
-		while (this.logEntries.length > 25)
-			this.logEntries.shift();
+		this.handleLogLength();
 	}
 
 	/**
@@ -100,7 +98,14 @@ export class Logger {
 	 */
 	public error(message: unknown): void {
 		this.logEntries.push(new LogEntry(ELogEntry.error, message));
-		while (this.logEntries.length > 25)
+		this.handleLogLength();
+	}
+
+	/**
+	 * Ensures that the log length is not exceeding the maximum allowed length
+	 */
+	private handleLogLength(): void {
+		while (this.logEntries.length > this.config.logLength)
 			this.logEntries.shift();
 	}
 
@@ -111,5 +116,12 @@ export class Logger {
 	 */
 	public getLogEntries(): LogEntries {
 		return this.logEntries;
+	}
+
+	/**
+	 * Clears the log entries
+	 */
+	public clear(): void {
+		this.logEntries = [];
 	}
 }

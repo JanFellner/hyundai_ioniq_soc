@@ -153,6 +153,8 @@ export class OBDConnection {
 	 * @param data - the data the parser has read from the serial port
 	 */
 	private onData(data: string): void {
+		if (this.config.logTransport)
+			theLogger.log(`receive:'${data}'`);
 		if (this.currentCommand)
 			this.currentCommand.setResponse(data);
 		else
@@ -200,61 +202,67 @@ export class OBDConnection {
 	 * @param command - one or multiple OBD commands to handle
 	 * @returns true in case all commands have been procesed successfully
 	 */
-	public async handleCommand(command: OBDCommand | OBDCommands): Promise<boolean> {
-		let bSuccess = true;
+	public async handleCommand(command: OBDCommand | OBDCommands): Promise<true | string> {
+		let returnValue: true | string = true;
 
+		try {
 		// Make an array if we have none (makes handling later easier)
-		if (!Array.isArray(command))
-			command = [command];
+			if (!Array.isArray(command))
+				command = [command];
 
-		// Process through the differnet commands
-		for (const com of command) {
+			// Process through the differnet commands
+			for (const com of command) {
 			// If we have no port or parser we can quit here
-			if (!this.port || !this.parser) {
-				theLogger.log("Have no port or parser in handleCommand inside the loop");
-				bSuccess = false;
-				break;
-			}
-
-			// Set the current command so that the callbacks can properly fill data into it
-			this.currentCommand = com;
-			let timeout: NodeJS.Timeout | undefined;
-
-			const prom = new Promise<true | string>((resolve) => {
 				if (!this.port || !this.parser) {
-					theLogger.log("Have no port or parser in handleCommand inside the promise");
-					return;
+					returnValue = "Have no port or parser in handleCommand inside the loop";
+					break;
 				}
 
-				// Send the data
-				this.port.write(com.getCommand());
+				// Set the current command so that the callbacks can properly fill data into it
+				this.currentCommand = com;
+				let timeout: NodeJS.Timeout | undefined;
 
-				// Create a timeout callback that resolves to timeout
-				timeout = setTimeout(() => {
+				const prom = new Promise<true | string>((resolve) => {
+					if (!this.port || !this.parser) {
+						resolve("Have no port or parser in handleCommand inside the promise");
+						return;
+					}
+
+					// Send the data
+					const command = com.getCommand();
+					if (this.config.logTransport)
+						theLogger.log(`send:'${command}'`);
+					this.port.write(command);
+
+					// Create a timeout callback that resolves to timeout
+					timeout = setTimeout(() => {
+						timeout = undefined;
+						resolve(`${command} timed out`);
+					}, com.timeout);
+
+					// Attach the resolve to the command
+					// The resolve is called in the class for the differente events (onData, onClose, onError)
+					com.resolve = resolve;
+				});
+
+				const result = await prom;
+
+				// Clear the timeout if it still exists
+				if (timeout) {
+					clearTimeout(timeout);
 					timeout = undefined;
-					resolve("Timed out");
-				}, com.delay);
-
-				// Attach the resolve to the command
-				// The resolve is called in the class for the differente events (onData, onClose, onError)
-				com.resolve = resolve;
-			});
-
-			const result = await prom;
-
-			// Clear the timeout if it still exists
-			if (timeout) {
-				clearTimeout(timeout);
-				timeout = undefined;
+				}
+				// If an error occured a string is returned, in that case we can instantly termiante here
+				if (result !== true) {
+					returnValue = result;
+					break;
+				}
 			}
-			// If an error occured a string is returned, in that case we can instantly termiante here
-			if (result !== true) {
-				bSuccess = false;
-				break;
-			}
+		} catch (error) {
+			returnValue = (error as Error).message;
 		}
 
-		return bSuccess;
+		return returnValue;
 	}
 
 	/**
@@ -273,7 +281,7 @@ export class OBDConnection {
 			return true;
 		} catch (error: unknown) {
 			theLogger.error(`${command} failed`);
-			return JSON.stringify(error);
+			return JSON.stringify((error as Error).message);
 		}
 	}
 }

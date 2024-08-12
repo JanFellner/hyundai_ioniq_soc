@@ -1,4 +1,4 @@
-import { theLogger } from "./globals";
+import { theConfig, theLogger } from "./globals";
 
 // The resolve function
 type resolveFunction = (value: true | string) => void;
@@ -20,12 +20,12 @@ export class OBDCommand {
 	 *
 	 * @param command - the command to send
 	 * @param bShowSendReply - flag whether we want to see sending and reply on the console or not
-	 * @param delay - the delay we are waiting for a repsonse
+	 * @param timeout - the delay we are waiting for a repsonse
 	 */
-	public constructor(command: string, bShowSendReply = EShowSendAndResponse.nothing, delay: number = 1000) {
+	public constructor(command: string, bShowSendReply = EShowSendAndResponse.nothing, timeout: number = theConfig.obd_defaultTimeout) {
 		this.command = command;
 		this.bShowSendReply = bShowSendReply;
-		this.delay = delay;
+		this.timeout = timeout;
 	}
 
 	/**
@@ -45,7 +45,7 @@ export class OBDCommand {
 	public setResponse(response: string): void {
 		this.response = response.trim();
 		if (this.bShowSendReply & EShowSendAndResponse.response)
-			theLogger.log(`Response: ${this.response}`);
+			theLogger.log(this.response);
 		if (this.resolve)
 			this.resolve(true);
 	}
@@ -58,7 +58,7 @@ export class OBDCommand {
 	public getCommand(): string {
 		const command = `${this.command}\r`;
 		if (this.bShowSendReply & EShowSendAndResponse.send)
-			theLogger.log(`Sending: ${command}`);
+			theLogger.log(command);
 		return command;
 	}
 
@@ -88,7 +88,7 @@ export class OBDCommand {
 	// Flag whether we want to see sending and reply on the console or not
 	public bShowSendReply: EShowSendAndResponse;
 	// The maximum delay we want to wait for an answer
-	public delay: number;
+	public timeout: number;
 	// The completed promise which will get triggered by callbacks in teh ODBConnection class onData, onClose, onError callbacks
 	private resolver?: resolveFunction;
 }
