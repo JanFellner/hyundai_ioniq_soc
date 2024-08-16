@@ -55,7 +55,7 @@ export class OBDConnection {
 	public async connect(): Promise<true | string> {
 		try {
 			// Ensure the bluetooth obd2 token is reachable
-			const reachable = this.isBluetoothDeviceReachable(this.config.obd2MAC);
+			const reachable = this.isBluetoothDeviceReachable();
 			if (reachable !== true)
 				return reachable;
 
@@ -268,13 +268,12 @@ export class OBDConnection {
 	/**
 	 * Validates if a certain bluetooth devices is reachable or not
 	 *
-	 * @param deviceMacAddress - the mac of the bluetooth decvice
 	 * @returns true if the device is reachable or false if not.
 	 */
-	private isBluetoothDeviceReachable(deviceMacAddress: string): true | string {
+	private isBluetoothDeviceReachable(): true | string {
 		// Run the l2ping command to check whether the device is pingable
 		const options: ExecSyncOptionsWithStringEncoding = { stdio: "pipe", encoding: "ascii" };
-		const command = `sudo l2ping -c 1 -s 1 -f ${deviceMacAddress}`;
+		const command = `sudo l2ping -c 1 -s 1 -f ${this.config.obd2MAC}`;
 		try {
 			execSync(command, options);
 			theLogger.log(`${command} succeeded`);
@@ -282,6 +281,32 @@ export class OBDConnection {
 		} catch (error: unknown) {
 			theLogger.error(`${command} failed`);
 			return JSON.stringify((error as Error).message);
+		}
+	}
+
+	/**
+	 * Get Bluetooth device signal strength
+	 *
+	 * @returns the signal strength as number or undefined on error
+	 */
+	public getBluetoothDeviceSignalStrength(): number | undefined {
+		// Run the l2ping command to check whether the device is pingable
+		const options: ExecSyncOptionsWithStringEncoding = { stdio: "pipe", encoding: "ascii" };
+		const command = `hcitool rssi ${this.config.obd2MAC}`;
+		try {
+			let dBmValue: number | undefined;
+			const result = execSync(command, options) as string;
+			const pos = result.lastIndexOf(": ");
+			if (pos !== -1) {
+				const dbValueString = result.substring(pos + 2);
+				dBmValue = parseInt(dbValueString, 10);
+			}
+			if (dBmValue === undefined)
+				theLogger.warn(`Could no read signal strength from ${command} - result was '${result}`);
+			return dBmValue;
+		} catch (error: unknown) {
+			theLogger.error(`${command} failed`);
+			return undefined;
 		}
 	}
 }

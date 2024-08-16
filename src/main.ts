@@ -20,6 +20,7 @@ let reentrant_protection = false;
 let lastQuery = 0;
 let errorCounter = 0;
 let mainState = eMainState.disconnected;
+let signalStrength: number | undefined;
 let timeout: NodeJS.Timeout | undefined;
 
 /**
@@ -111,8 +112,10 @@ async function querySOC(caller: string): Promise<boolean> {
 			} else
 				theLogger.error(connectResult);
 		}
-		if (bContinue)
+		if (bContinue) {
+			signalStrength = await theOBDConnection.getBluetoothDeviceSignalStrength();
 			bReturn = await readSOC(caller);
+		}
 	} catch (error) {
 	}
 	reentrant_protection = false;
@@ -124,8 +127,6 @@ async function querySOC(caller: string): Promise<boolean> {
  * the global loop that keeps everything going
  */
 async function mainLoop(): Promise<void> {
-	if (timeout)
-		clearTimeout(timeout);
 	let nextRun = 5000;
 	let nextState = eMainState.disconnected;
 	try {
@@ -170,9 +171,13 @@ async function mainLoop(): Promise<void> {
 	if (nextState === eMainState.connected_failed_to_read_soc && errorCounter <= 10)
 		logMessage += ` (${errorCounter}/10)`;
 	logMessage += "...";
-
 	theLogger.log(logMessage);
-	timeout = setTimeout(() => { void mainLoop(); }, 5000);
+
+	if (timeout) {
+		clearTimeout(timeout);
+		timeout = undefined;
+	}
+	timeout = setTimeout(() => { void mainLoop(); }, nextRun);
 }
 
 theWebServer.get("/soc_double", async (req: Request, res: Response) => {
@@ -245,9 +250,20 @@ theWebServer.get("/", async (req: Request, res: Response) => {
 	body += `<tr><td>SOC:</td><td>${theBatteryState.soc}%</td></tr>\n`;
 	body += `<tr><td>Last read:</td><td>${Helpers.getTimeString(theBatteryState.lastChanged, false)}</td></tr>\n`;
 	body += `<tr><td>OBD-Dongle:</td><td>${theConfig.obd2MAC} `;
-	if (theOBDConnection.isConnected())
-		body += `<span style="color: green; font-weight: bold;">connected</span>`;
-	else
+	if (theOBDConnection.isConnected()) {
+		let color = "gray";
+		if (typeof signalStrength === "number") {
+			if (signalStrength < 0 && signalStrength >= -30)
+				color = "green";
+			else if (signalStrength < -30 && signalStrength >= -60)
+				color = "yellow";
+			else if (signalStrength < -60 && signalStrength >= -90)
+				color = "orange";
+			else if (signalStrength < -90)
+				color = "red";
+		}
+		body += `<span style="color: green; font-weight: bold;">connected</span> (<span style="color: ${color}; font-weight: bold;">${signalStrength}</span> dBm)`;
+	} else
 		body += `<span style="color: red; font-weight: bold;">not connected</span>`;
 	body += "</td></tr>\n";
 	body += `<tr><td>Links:</td><td><a target="_blank" href="/soc_integer">/soc_integer</a>&nbsp;<a target="_blank" href="/soc_double">/soc_double</a>&nbsp;<a target="_blank" href="/distance">/distance</a></td></tr>\n`;
