@@ -36,11 +36,6 @@ Open the cover next and below the steering wheel. Use the extension cord and con
   sudo bluetoothctl
   ```
 
-* Activate the agent
-  ```
-  agent on
-  ```
-
 * Activate scanning
   ```
   scan on
@@ -70,12 +65,17 @@ Now press the bluetooth link button on the OBD dongle
 
 * Create the serial port we will then use to communicate with the dongle
   ```
+  sudo nano /etc/rc.local
+  ```
+
+  add the following line somewhere in the file before the exit
+  ```
   sudo rfcomm bind hci0 XX:XX:XX:XX:XX:XX 1
   ```
-  
-* Reboot
+
+  Call the file to create the com port with
   ```
-  sudo reboot
+  sudo /etc/rc.local
   ```
 
 ### Install the hyundai soc service
