@@ -272,15 +272,22 @@ export class OBDConnection {
 	 */
 	private isBluetoothDeviceReachable(): true | string {
 		// Run the l2ping command to check whether the device is pingable
-		const options: ExecSyncOptionsWithStringEncoding = { stdio: "pipe", encoding: "ascii" };
-		const command = `sudo l2ping -c 1 -s 1 -f ${this.config.obd2MAC}`;
+		const options: ExecSyncOptionsWithStringEncoding = {
+			stdio: "pipe",
+			encoding: "ascii",
+			timeout: 500
+		};
+		const command = `sudo l2ping -c 1 -s 1 -t 1 -f ${this.config.obd2MAC}`;
 		try {
 			execSync(command, options);
 			theLogger.log(`${command} succeeded`);
 			return true;
 		} catch (error: unknown) {
-			theLogger.error(`${command} failed`);
-			return JSON.stringify((error as Error).message);
+			const msg = (error as Error).message;
+			if (msg.indexOf("ETIMEDOUT") !== -1)
+				return `Bluetooth dongle is out of range`;
+			else
+				return `${command} failed - ${error}`;
 		}
 	}
 

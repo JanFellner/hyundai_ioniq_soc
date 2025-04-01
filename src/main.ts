@@ -2,7 +2,7 @@ import { theBatteryState, theConfig, theLogger, theOBDConnection } from "./globa
 import { Helpers } from "./helpers";
 import { initCommands } from "./initCommands";
 import { ELogEntry } from "./logger";
-import { OBDCommand } from "./OBDCommand";
+import { OBDCommand, OBDCommands } from "./OBDCommand";
 import express, { Application, Request, Response } from "express";
 export const theWebServer: Application = express();
 /*
@@ -21,6 +21,7 @@ let lastQuery = 0;
 let errorCounter = 0;
 let mainState = eMainState.disconnected;
 let signalStrength: number | undefined;
+let voltage: string | undefined;
 let timeout: NodeJS.Timeout | undefined;
 
 /**
@@ -47,31 +48,57 @@ async function readSOC(caller: string): Promise<boolean> {
 	let bSOCFound = false;
 	lastQuery = Date.now();
 
-	// If we are connected, let´s fetch the element that allows us to read the SOC
-	const getSOCCommmand = new OBDCommand("2105");
-	theLogger.log(`Querying SOC (${caller})`);
-	if (await theOBDConnection.handleCommand(getSOCCommmand) && getSOCCommmand.hasResponse()) {
-		// Sending a 2105 we will receive a line with the following sample data:
-		// 7EC 24 03 E8 02 03 E8 01 91 SOC 72%
-		// 7EC 24 03 E8 02 03 E8 01 92 SOC 73%
-		// 7EC 24 03 E8 02 03 E8 01 95 SOC 74%
-		// 7EC 24 03 E8 02 03 E8 01 96 SOC 75%
+	/*
+	// This would read the mileage but is only working in case the car has been switched on
+	{
+		let commands: OBDCommands = [];
+		commands.push(new OBDCommand("ATSH 7C6"));
+		const getkmCommmand = new OBDCommand("22B002 2");
+		commands.push(getkmCommmand);
+		if (await theOBDConnection.handleCommand(commands) && getkmCommmand.hasResponse()) {
+			const response = getkmCommmand.response;
+			// 00 00 8D 00 2C 82
+			// 00 * 256*256
+			// 8D * 256
+			// 82
+			const elements = response.split("\r");
+			for (let element of elements) {
 
-		// If the car is sleeping (no ignition, not charging), we receive a pretty empty list here
-		const response = getSOCCommmand.response;
-		const elements = response.split("\r");
-		for (let element of elements) {
-			element = element.trim();
-			if (element.substring(0, 6) === "7EC 24") {
-				const socHex = element.substring(element.length - 2, element.length);
-				const newSoc = parseInt(socHex, 16) / 2;
-				theBatteryState.setSoc(newSoc);
-				theLogger.log(`Current SOC: ${newSoc}%`);
-				bSOCFound = true;
 			}
 		}
-		if (!bSOCFound)
-			theLogger.warn("SOC currently not available");
+	}
+	*/
+
+	{
+		let commands: OBDCommands = [];
+		// If we are connected, let´s fetch the element that allows us to read the SOC
+		commands.push(new OBDCommand("ATSH 7DF"));
+		const getSOCCommmand = new OBDCommand("2105");
+		commands.push(getSOCCommmand);
+		theLogger.log(`Querying SOC (${caller})`);
+		if (await theOBDConnection.handleCommand(commands) && getSOCCommmand.hasResponse()) {
+			// Sending a 2105 we will receive a line with the following sample data:
+			// 7EC 24 03 E8 02 03 E8 01 91 SOC 72%
+			// 7EC 24 03 E8 02 03 E8 01 92 SOC 73%
+			// 7EC 24 03 E8 02 03 E8 01 95 SOC 74%
+			// 7EC 24 03 E8 02 03 E8 01 96 SOC 75%
+
+			// If the car is sleeping (no ignition, not charging), we receive a pretty empty list here
+			const response = getSOCCommmand.response;
+			const elements = response.split("\r");
+			for (let element of elements) {
+				element = element.trim();
+				if (element.substring(0, 6) === "7EC 24") {
+					const socHex = element.substring(element.length - 2, element.length);
+					const newSoc = parseInt(socHex, 16) / 2;
+					theBatteryState.setSoc(newSoc);
+					theLogger.log(`Current SOC: ${newSoc}%`);
+					bSOCFound = true;
+				}
+			}
+			if (!bSOCFound)
+				theLogger.warn("SOC currently not available");
+		}
 	}
 
 	return bSOCFound;
@@ -114,6 +141,9 @@ async function querySOC(caller: string): Promise<boolean> {
 		}
 		if (bContinue) {
 			signalStrength = await theOBDConnection.getBluetoothDeviceSignalStrength();
+			const query12V = new OBDCommand("ATRV");
+			if (await theOBDConnection.handleCommand(query12V))
+				voltage = query12V.response;
 			bReturn = await readSOC(caller);
 		}
 	} catch (error) {
@@ -149,9 +179,12 @@ async function mainLoop(): Promise<void> {
 				errorCounter++;
 			} else {
 				// the SOC was not readable, but we are connected (so car is nearby)
-				// Wait 15 minutes before retrying
-				// If the direct urls are served the service retries queriy anyway
-				nextRun = 15 * 60 * 1000;
+				// Wait 480 minutes before retrying (every 8 hours)
+				// If the car is not charging we cannot read the SOC anyway
+				// So the reading must be done through the direkt access uris/queries
+				// If we would ask more frequently the car will completly wake up and this
+				// drains pretty much from the 12V battery
+				nextRun = 480 * 60 * 1000;
 			}
 		} else {
 			// We are not connected, so we could not connect to the car
@@ -179,13 +212,6 @@ async function mainLoop(): Promise<void> {
 	}
 	timeout = setTimeout(() => { void mainLoop(); }, nextRun);
 }
-
-theWebServer.get("/soc_double", async (req: Request, res: Response) => {
-	if (needsRequery())
-		await querySOC("/soc_double");
-	const soc = theBatteryState.soc || 0;
-	res.send(`${soc}`);
-});
 
 theWebServer.get("/soc_integer", async (req: Request, res: Response) => {
 	if (needsRequery())
@@ -262,7 +288,7 @@ theWebServer.get("/", async (req: Request, res: Response) => {
 			else if (signalStrength < -90)
 				color = "red";
 		}
-		body += `<span style="color: green; font-weight: bold;">connected</span> (<span style="color: ${color}; font-weight: bold;">${signalStrength}</span> dBm)`;
+		body += `<span style="color: green; font-weight: bold;">connected</span> (<span style="color: ${color}; font-weight: bold;">${signalStrength}</span> dBm / ${voltage})`;
 	} else
 		body += `<span style="color: red; font-weight: bold;">not connected</span>`;
 	body += "</td></tr>\n";
