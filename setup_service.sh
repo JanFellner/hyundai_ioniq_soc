@@ -33,6 +33,9 @@ Environment=NODE_ENV=production
 WantedBy=multi-user.target
 EOT
 
+# Allow any user to call l2ping
+setcap cap_net_raw+ep /usr/bin/l2ping
+
 # Reload systemd to apply new service
 echo "Reloading systemd..."
 systemctl daemon-reload

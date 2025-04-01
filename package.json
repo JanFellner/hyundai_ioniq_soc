@@ -11,7 +11,8 @@
     "lintnocache": "eslint --fix -c .eslintrc.precommit.cjs src/**/*.{js,ts}",
     "build": "tsc",
     "start": "node dist/main.js",
-    "serve": "npm ci && npm run build && npm run start"
+    "prepare": "npm ci && npm run build",
+    "serve": "npm run start"
   },
   "keywords": [],
   "author": "",

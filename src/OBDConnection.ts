@@ -277,7 +277,7 @@ export class OBDConnection {
 			encoding: "ascii",
 			timeout: 500
 		};
-		const command = `sudo l2ping -c 1 -s 1 -t 1 -f ${this.config.obd2MAC}`;
+		const command = `l2ping -c 1 -s 1 -t 1 -f ${this.config.obd2MAC}`;
 		try {
 			execSync(command, options);
 			theLogger.log(`${command} succeeded`);
